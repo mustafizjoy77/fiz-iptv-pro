@@ -646,17 +646,43 @@ function playChannel(ch) {
 
   if (Hls.isSupported()) {
     mainHls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: true,
-      backBufferLength: 30
+      enableWorker: false,          // Worker off — Android Chrome stable
+      lowLatencyMode: false,        // Off — live TV তে overkill, choke করে
+      backBufferLength: 0,          // Back buffer off — mobile memory বাঁচায়
+      maxBufferLength: 20,          // 20s buffer — ভালো balance
+      maxMaxBufferLength: 40,       // Max cap
+      maxBufferSize: 30 * 1000 * 1000, // 30MB max
+      fragLoadingTimeOut: 20000,    // 20s timeout per fragment
+      manifestLoadingTimeOut: 15000,
+      levelLoadingTimeOut: 15000,
+      fragLoadingMaxRetry: 6,       // Retry বেশি
+      manifestLoadingMaxRetry: 4,
+      levelLoadingMaxRetry: 4,
+      fragLoadingRetryDelay: 1000,
+      startFragPrefetch: true,      // আগে থেকে load
+      testBandwidth: true,          // Bandwidth মেপে quality বাছে
+      abrEwmaFastLive: 3.0,
+      abrEwmaSlowLive: 9.0,
     });
     mainHls.loadSource(ch.url);
     mainHls.attachMedia(mainVid);
     mainHls.on(Hls.Events.MANIFEST_PARSED, () => {
       mainVid.play().catch(() => showToast("⚠️ Stream offline or error"));
     });
-    mainHls.on(Hls.Events.ERROR, (e, data) => {
-      if (data.fatal) showToast("⚠️ Stream error: " + (data.type || "unknown"));
+    mainHls.on(Hls.Events.ERROR, (event, data) => {
+      if (data.fatal) {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          // Network error — auto recover
+          showToast("🔄 Reconnecting...");
+          mainHls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          // Media error — try recover
+          showToast("🔄 Stream recovering...");
+          mainHls.recoverMediaError();
+        } else {
+          showToast("⚠️ Stream error — try another channel");
+        }
+      }
     });
   } else if (mainVid.canPlayType("application/vnd.apple.mpegurl")) {
     mainVid.src = ch.url;
@@ -675,9 +701,18 @@ function playChannel(ch) {
 function restoreLastChannel() {
   try {
     const last = JSON.parse(localStorage.getItem("lastChannel") || "null");
-    if (last && last.id) {
-      setTimeout(() => playChannel(last), 500);
-    }
+    if (!last || !last.id) return;
+
+    // Mute করে autoplay — browser block করবে না
+    mainVid.muted = true;
+    setTimeout(() => {
+      playChannel(last);
+      // Play শুরু হলে unmute
+      mainVid.addEventListener("playing", function onFirstPlay() {
+        mainVid.removeEventListener("playing", onFirstPlay);
+        mainVid.muted = false;
+      }, { once: true });
+    }, 500);
   } catch(e) {}
 }
 
