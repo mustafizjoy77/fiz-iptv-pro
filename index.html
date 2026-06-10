@@ -264,63 +264,16 @@ header {
   box-shadow:0 4px 20px rgba(0,0,0,.4);
 }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+/* SLEEP TIMER OPTION */
+.sleep-opt {
+  padding:11px 20px; font-size:13px; font-weight:600;
+  color:var(--text); cursor:pointer; transition:.15s;
+}
+.sleep-opt:hover { background:var(--card); color:var(--accent); }
+/* LOCK BADGE flex */
+#lockBadge { display:none; }
+#lockBadge.show { display:flex !important; }
 
-/* PiP RUNNING OVERLAY on main player */
-#pipOverlay {
-  display:none;
-  position:absolute; inset:0;
-  background:rgba(0,0,0,0.82);
-  z-index:998;
-  flex-direction:column;
-  align-items:center; justify-content:center;
-  gap:14px;
-}
-#pipOverlay.active { display:flex; }
-.pip-overlay-icon { font-size:40px; animation:pulse 1.5s infinite; }
-.pip-overlay-text { font-size:15px; font-weight:700; color:#fff; }
-.pip-overlay-sub  { font-size:12px; color:var(--muted); }
-.pip-stop-btn {
-  background:var(--red); border:none; color:#fff;
-  padding:9px 22px; border-radius:20px;
-  font-size:13px; font-weight:700; cursor:pointer;
-  box-shadow:0 0 14px rgba(239,68,68,0.4);
-}
-#floatPlayer {
-  display:none;
-  position:fixed;
-  bottom:80px; right:12px;
-  width:200px; height:118px;
-  background:#000;
-  border-radius:12px;
-  overflow:hidden;
-  z-index:9999999;
-  box-shadow:0 8px 32px rgba(0,0,0,0.7), 0 0 0 2px var(--accent);
-  touch-action:none;
-  cursor:grab;
-}
-#floatPlayer.active { display:block; }
-#floatPlayer:active { cursor:grabbing; }
-#floatPlayerVideo {
-  width:100%; height:100%;
-  object-fit:contain;
-  background:#000;
-}
-#floatClose {
-  position:absolute; top:4px; right:4px;
-  width:22px; height:22px;
-  background:rgba(0,0,0,0.7);
-  border:none; border-radius:50%;
-  color:#fff; font-size:12px;
-  cursor:pointer; display:flex;
-  align-items:center; justify-content:center;
-  z-index:10;
-}
-#floatLabel {
-  position:absolute; bottom:4px; left:6px; right:28px;
-  font-size:9px; color:rgba(255,255,255,0.8);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  pointer-events:none;
-}
 </style>
 </head>
 
@@ -336,18 +289,27 @@ header {
 <div class="player-wrapper">
   <video id="mainVideo" controls playsinline webkit-playsinline x-webkit-airplay="allow"
     style="width:100%;height:220px;background:#000;display:block;"></video>
-  <div id="pipOverlay">
-    <div class="pip-overlay-icon">📺</div>
-    <div class="pip-overlay-text">Mini Player চলছে</div>
-    <div class="pip-overlay-sub" id="pipOverlayChannel"></div>
-    <button class="pip-stop-btn" onclick="closeFloatPlayer()">✕ Mini Player বন্ধ করো</button>
-  </div>
   <div class="player-bar">
     <div class="live-dot"></div>
     <div id="nowPlaying">No Channel Selected</div>
+    <span id="bufferSpinner" style="display:none;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;"></span>
     <div class="quality-badge">LIVE</div>
-    <button id="pipBtn" title="Mini Player (PiP)" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;padding:4px 6px;border-radius:8px;transition:.2s;display:flex;align-items:center;justify-content:center;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'"><i class="fa fa-clone"></i></button>
+    <button id="lockBtn" title="Lock Screen" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:4px 5px;"><i class="fa fa-lock-open"></i></button>
+    <button id="sleepBtn" title="Sleep Timer" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:4px 5px;"><i class="fa fa-moon"></i></button>
   </div>
+</div>
+<!-- LOCK OVERLAY -->
+<div id="lockOverlay" style="display:none;position:fixed;inset:0;z-index:9999998;background:rgba(0,0,0,0.01);"></div>
+<div id="lockBadge" style="display:none;position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:7px 16px;font-size:12px;font-weight:700;color:var(--muted);z-index:9999999;gap:6px;align-items:center;">
+  <i class="fa fa-lock"></i> Screen Locked — Hold to unlock
+</div>
+<!-- SLEEP TIMER MENU -->
+<div id="sleepMenu" style="display:none;position:fixed;bottom:80px;right:14px;background:var(--card2);border:1px solid var(--border);border-radius:14px;z-index:999999;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.5);">
+  <div style="padding:10px 16px;font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);">⏱ Sleep Timer</div>
+  <div class="sleep-opt" onclick="setSleep(15)">15 minutes</div>
+  <div class="sleep-opt" onclick="setSleep(30)">30 minutes</div>
+  <div class="sleep-opt" onclick="setSleep(60)">60 minutes</div>
+  <div class="sleep-opt" onclick="setSleep(0)" style="color:var(--red);">Cancel Timer</div>
 </div>
 
 <div class="search-wrap">
@@ -392,18 +354,12 @@ header {
   <div class="install-banner-icon">📺</div>
   <div class="install-banner-text">
     <strong>Fiz IPTV Pro Install করো</strong>
-    <span>App হিসেবে install করলে PiP সব জায়গায় কাজ করবে</span>
+    <span>App হিসেবে install করলে home screen থেকে সরাসরি open করা যাবে</span>
   </div>
   <button class="install-banner-btn" id="installBannerBtn"><i class="fa fa-download"></i> Install</button>
   <button class="install-banner-close" onclick="document.getElementById('installBanner').classList.remove('show')"><i class="fa fa-times"></i></button>
 </div>
 
-<!-- CUSTOM FLOAT PLAYER -->
-<div id="floatPlayer">
-  <video id="floatPlayerVideo" playsinline autoplay muted></video>
-  <button id="floatClose" onclick="closeFloatPlayer()"><i class="fa fa-times"></i></button>
-  <div id="floatLabel">No Channel</div>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
 
@@ -433,9 +389,6 @@ let currentFilteredData = [];
 let mainHls = null;
 const mainVid = document.getElementById("mainVideo");
 
-// Remove PiP restriction that Chrome sometimes sets
-mainVid.disablePictureInPicture = false;
-mainVid.removeAttribute("disablePictureInPicture");
 
 // Fullscreen → landscape lock
 mainVid.addEventListener("fullscreenchange", () => {
@@ -446,15 +399,6 @@ mainVid.addEventListener("fullscreenchange", () => {
   }
 });
 
-// PiP button
-document.getElementById("pipBtn").addEventListener("click", () => {
-  const floatEl = document.getElementById("floatPlayer");
-  if (floatEl.classList.contains("active") || pipMode === 'native') {
-    closeFloatPlayer();
-  } else {
-    openFloatPlayer();
-  }
-});
 
 document.addEventListener("DOMContentLoaded", () => {
   restoreLastChannel();
@@ -835,149 +779,85 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+
+
+
+
 // ═══════════════════════════════════════
-// CUSTOM FLOAT PLAYER ENGINE
+// BUFFER / WAITING INDICATOR
 // ═══════════════════════════════════════
-let floatHls = null;
-let pipMode = null; // 'native' | 'custom'
+mainVid.addEventListener("waiting",  () => { document.getElementById("bufferSpinner").style.display = "inline-block"; });
+mainVid.addEventListener("playing",  () => { document.getElementById("bufferSpinner").style.display = "none"; });
+mainVid.addEventListener("canplay",  () => { document.getElementById("bufferSpinner").style.display = "none"; });
 
-function showPipOverlay() {
-  const overlay = document.getElementById("pipOverlay");
-  const sub = document.getElementById("pipOverlayChannel");
-  if (currentChannel) sub.textContent = currentChannel.name;
-  overlay.classList.add("active");
-  mainVid.pause();
-}
+// ═══════════════════════════════════════
+// SLEEP TIMER
+// ═══════════════════════════════════════
+let sleepTimerId = null;
 
-function hidePipOverlay() {
-  document.getElementById("pipOverlay").classList.remove("active");
-  if (currentChannel) mainVid.play().catch(()=>{});
-}
+document.getElementById("sleepBtn").addEventListener("click", () => {
+  const menu = document.getElementById("sleepMenu");
+  menu.style.display = menu.style.display === "block" ? "none" : "block";
+});
 
-function openFloatPlayer() {
-  if (!currentChannel) { showToast("⚠️ Prothome ekta channel play koro"); return; }
-
-  // ── Try native PiP on mainVid directly (best for app switch) ──
-  mainVid.disablePictureInPicture = false;
-  mainVid.removeAttribute("disablePictureInPicture");
-
-  if (typeof mainVid.requestPictureInPicture === "function" && document.pictureInPictureEnabled) {
-    mainVid.requestPictureInPicture().then(() => {
-      pipMode = 'native';
-      showPipOverlay();
-      document.getElementById("pipBtn").querySelector("i").className = "fa fa-compress";
-
-      mainVid.addEventListener("leavepictureinpicture", function onLeave() {
-        mainVid.removeEventListener("leavepictureinpicture", onLeave);
-        if (pipMode === 'native') {
-          pipMode = null;
-          hidePipOverlay();
-          document.getElementById("pipBtn").querySelector("i").className = "fa fa-clone";
-        }
-      });
-    }).catch(err => {
-      console.log("Native PiP failed:", err);
-      openCustomFloat();
-    });
-    return;
+// Close sleep menu on outside click
+document.addEventListener("click", e => {
+  if (!e.target.closest("#sleepMenu") && !e.target.closest("#sleepBtn")) {
+    document.getElementById("sleepMenu").style.display = "none";
   }
+});
 
-  openCustomFloat();
-}
-
-function openCustomFloat() {
-  pipMode = 'custom';
-  const floatEl  = document.getElementById("floatPlayer");
-  const floatVid = document.getElementById("floatPlayerVideo");
-  const floatLabel = document.getElementById("floatLabel");
-
-  floatLabel.textContent = currentChannel.name;
-
-  if (window.Hls && Hls.isSupported()) {
-    if (floatHls) { floatHls.destroy(); }
-    floatHls = new Hls({ enableWorker: false });
-    floatHls.loadSource(currentChannel.url);
-    floatHls.attachMedia(floatVid);
-    floatHls.on(Hls.Events.MANIFEST_PARSED, () => floatVid.play().catch(()=>{}));
-  } else if (floatVid.canPlayType("application/vnd.apple.mpegurl")) {
-    floatVid.src = currentChannel.url;
-    floatVid.play().catch(()=>{});
-  } else {
-    const mainVid = document.querySelector("#mainVideo video");
-    if (mainVid && mainVid.captureStream) {
-      floatVid.srcObject = mainVid.captureStream();
-      floatVid.play().catch(()=>{});
-    } else {
-      floatVid.src = currentChannel.url;
-      floatVid.play().catch(()=>{});
-    }
+function setSleep(mins) {
+  document.getElementById("sleepMenu").style.display = "none";
+  if (sleepTimerId) { clearTimeout(sleepTimerId); sleepTimerId = null; }
+  if (mins === 0) { 
+    document.getElementById("sleepBtn").style.color = "var(--muted)";
+    showToast("⏱ Sleep timer cancelled"); 
+    return; 
   }
-
-  floatEl.classList.add("active");
-  showPipOverlay();
-  document.getElementById("pipBtn").querySelector("i").className = "fa fa-compress";
-  initFloatDrag(floatEl);
+  document.getElementById("sleepBtn").style.color = "var(--yellow)";
+  showToast("⏱ Sleep timer: " + mins + " min");
+  sleepTimerId = setTimeout(() => {
+    mainVid.pause();
+    if (mainHls) { mainHls.destroy(); mainHls = null; }
+    document.getElementById("sleepBtn").style.color = "var(--muted)";
+    showToast("😴 Sleep timer — playback stopped");
+  }, mins * 60 * 1000);
 }
 
-function closeFloatPlayer() {
-  // Exit native PiP if active
-  if (pipMode === 'native' && document.pictureInPictureElement) {
-    document.exitPictureInPicture().catch(()=>{});
-  }
+// ═══════════════════════════════════════
+// LOCK SCREEN
+// ═══════════════════════════════════════
+let locked = false;
 
-  // Close custom float
-  const floatEl  = document.getElementById("floatPlayer");
-  const floatVid = document.getElementById("floatPlayerVideo");
-  floatVid.pause();
-  floatVid.src = "";
-  floatVid.srcObject = null;
-  if (floatHls) { floatHls.destroy(); floatHls = null; }
-  floatEl.classList.remove("active");
+document.getElementById("lockBtn").addEventListener("click", () => {
+  locked = true;
+  document.getElementById("lockOverlay").style.display = "block";
+  document.getElementById("lockBadge").classList.add("show");
+  document.getElementById("lockBtn").querySelector("i").className = "fa fa-lock";
+  document.getElementById("lockBtn").style.color = "var(--accent)";
+  showToast("🔒 Screen locked");
+});
 
-  pipMode = null;
-  hidePipOverlay();
-  document.getElementById("pipBtn").querySelector("i").className = "fa fa-clone";
-  showToast("⏹ Mini player বন্ধ");
+// Long press anywhere on lock overlay to unlock
+let lockHoldTimer = null;
+const lockOverlay = document.getElementById("lockOverlay");
+
+function startUnlock() { lockHoldTimer = setTimeout(doUnlock, 1500); }
+function cancelUnlock() { clearTimeout(lockHoldTimer); }
+function doUnlock() {
+  locked = false;
+  lockOverlay.style.display = "none";
+  document.getElementById("lockBadge").classList.remove("show");
+  document.getElementById("lockBtn").querySelector("i").className = "fa fa-lock-open";
+  document.getElementById("lockBtn").style.color = "var(--muted)";
+  showToast("🔓 Screen unlocked");
 }
 
-function initFloatDrag(el) {
-  let startX, startY, startLeft, startTop, dragging = false;
-
-  function getPos(e) {
-    return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
-                     : { x: e.clientX, y: e.clientY };
-  }
-
-  el.onmousedown = el.ontouchstart = function(e) {
-    if (e.target.id === "floatClose" || e.target.closest("#floatClose")) return;
-    dragging = true;
-    const pos = getPos(e);
-    const rect = el.getBoundingClientRect();
-    startX = pos.x; startY = pos.y;
-    startLeft = rect.left; startTop = rect.top;
-    el.style.right = "auto";
-    el.style.bottom = "auto";
-    el.style.left = startLeft + "px";
-    el.style.top = startTop + "px";
-    e.preventDefault();
-  };
-
-  document.onmousemove = document.ontouchmove = function(e) {
-    if (!dragging) return;
-    const pos = getPos(e);
-    let newLeft = startLeft + (pos.x - startX);
-    let newTop  = startTop  + (pos.y - startY);
-    const maxL = window.innerWidth  - el.offsetWidth;
-    const maxT = window.innerHeight - el.offsetHeight;
-    newLeft = Math.max(0, Math.min(newLeft, maxL));
-    newTop  = Math.max(0, Math.min(newTop,  maxT));
-    el.style.left = newLeft + "px";
-    el.style.top  = newTop  + "px";
-    e.preventDefault();
-  };
-
-  document.onmouseup = document.ontouchend = function() { dragging = false; };
-}
+lockOverlay.addEventListener("touchstart", startUnlock);
+lockOverlay.addEventListener("touchend", cancelUnlock);
+lockOverlay.addEventListener("mousedown", startUnlock);
+lockOverlay.addEventListener("mouseup", cancelUnlock);
 
 // ═══════════════════════════════════════
 // INITIALIZATION RUNTIME
