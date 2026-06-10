@@ -11,7 +11,6 @@
 <title>Fiz IPTV Pro</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet">
 <style>
 :root {
   --bg: #0a0d14;
@@ -91,7 +90,7 @@ header {
   position:sticky; top:58px; z-index:999;
   background:#000; isolation:isolate;
 }
-.video-js { width:100% !important; height:220px !important; }
+
 .player-bar {
   display:flex; align-items:center; gap:10px; padding:8px 14px;
   background:linear-gradient(135deg,#111827,#1a2235);
@@ -335,7 +334,8 @@ header {
 </header>
 
 <div class="player-wrapper">
-  <video id="mainVideo" class="video-js vjs-default-skin" controls autoplay playsinline></video>
+  <video id="mainVideo" controls playsinline webkit-playsinline x-webkit-airplay="allow"
+    style="width:100%;height:220px;background:#000;display:block;"></video>
   <div id="pipOverlay">
     <div class="pip-overlay-icon">📺</div>
     <div class="pip-overlay-text">Mini Player চলছে</div>
@@ -405,7 +405,6 @@ header {
   <div id="floatLabel">No Channel</div>
 </div>
 
-<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
 
 <script>
@@ -425,60 +424,40 @@ let allChannels = [];
 let currentTab = "bangla";
 let currentSubCategory = "All";
 let currentChannel = null;
-let player = null;
 let visibleCount = 6; 
 let currentFilteredData = [];     
 
 // ═══════════════════════════════════════
-// VIDEOJS INITIALIZATION
+// NATIVE HLS.js PLAYER INITIALIZATION
 // ═══════════════════════════════════════
-document.addEventListener("DOMContentLoaded", function() {
-  player = videojs("mainVideo", {
-    controls: true,
-    autoplay: false,
-    preload: "none",
-    fluid: false,
-    errorDisplay: false,
-    controlBar: {
-      pictureInPictureToggle: false
-    }
-  });
+let mainHls = null;
+const mainVid = document.getElementById("mainVideo");
 
-  // ── CUSTOM FLOAT PLAYER (PiP replacement, works on file:// & all browsers) ──
-  const pipBtn = document.getElementById("pipBtn");
+// Remove PiP restriction that Chrome sometimes sets
+mainVid.disablePictureInPicture = false;
+mainVid.removeAttribute("disablePictureInPicture");
 
-  player.ready(function() {
-    const vid = document.querySelector("#mainVideo video");
-    if (vid) {
-      vid.removeAttribute("disablePictureInPicture");
-      vid.disablePictureInPicture = false;
-    }
-  });
+// Fullscreen → landscape lock
+mainVid.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) {
+    screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(()=>{});
+  } else {
+    screen.orientation && screen.orientation.unlock && screen.orientation.unlock();
+  }
+});
 
-  pipBtn.addEventListener("click", function() {
-    const floatEl = document.getElementById("floatPlayer");
-    if (floatEl.classList.contains("active")) {
-      closeFloatPlayer();
-    } else {
-      openFloatPlayer();
-    }
-  });
+// PiP button
+document.getElementById("pipBtn").addEventListener("click", () => {
+  const floatEl = document.getElementById("floatPlayer");
+  if (floatEl.classList.contains("active") || pipMode === 'native') {
+    closeFloatPlayer();
+  } else {
+    openFloatPlayer();
+  }
+});
 
-  player.on('fullscreenchange', function() {
-    if (player.isFullscreen()) {
-      if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(e => console.log("Orientation lock not supported:", e));
-      }
-    } else {
-      if (screen.orientation && screen.orientation.unlock) {
-        screen.orientation.unlock();
-      }
-    }
-  });
-
-  player.ready(function() {
-    restoreLastChannel();
-  });
+document.addEventListener("DOMContentLoaded", () => {
+  restoreLastChannel();
 });
 
 // ═══════════════════════════════════════
@@ -703,7 +682,7 @@ window.addEventListener('scroll', () => {
 });
 
 // ═══════════════════════════════════════
-// LIVE STREAM PIPELINE
+// LIVE STREAM PIPELINE (Native HLS.js)
 // ═══════════════════════════════════════
 function playChannel(ch) {
   if (typeof ch === 'string') {
@@ -713,15 +692,33 @@ function playChannel(ch) {
   currentChannel = ch;
   addRecent(ch);
   localStorage.setItem("lastChannel", JSON.stringify(ch));
-
   document.getElementById("nowPlaying").textContent = ch.name;
 
-  if (player) {
-    player.src({ src: ch.url, type: "application/x-mpegURL" });
-    player.play().catch(e => {
-        console.error("Playback failed:", e);
-        showToast("⚠️ Stream offline or error");
+  // Destroy previous HLS instance
+  if (mainHls) { mainHls.destroy(); mainHls = null; }
+
+  mainVid.disablePictureInPicture = false;
+  mainVid.removeAttribute("disablePictureInPicture");
+
+  if (Hls.isSupported()) {
+    mainHls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      backBufferLength: 30
     });
+    mainHls.loadSource(ch.url);
+    mainHls.attachMedia(mainVid);
+    mainHls.on(Hls.Events.MANIFEST_PARSED, () => {
+      mainVid.play().catch(() => showToast("⚠️ Stream offline or error"));
+    });
+    mainHls.on(Hls.Events.ERROR, (e, data) => {
+      if (data.fatal) showToast("⚠️ Stream error: " + (data.type || "unknown"));
+    });
+  } else if (mainVid.canPlayType("application/vnd.apple.mpegurl")) {
+    mainVid.src = ch.url;
+    mainVid.play().catch(() => showToast("⚠️ Stream offline or error"));
+  } else {
+    showToast("⚠️ HLS not supported on this browser");
   }
 
   document.querySelectorAll(".channel").forEach(el => el.classList.remove("playing"));
@@ -735,7 +732,7 @@ function restoreLastChannel() {
   try {
     const last = JSON.parse(localStorage.getItem("lastChannel") || "null");
     if (last && last.id) {
-      setTimeout(() => playChannel(last), 800);
+      setTimeout(() => playChannel(last), 500);
     }
   } catch(e) {}
 }
@@ -786,11 +783,10 @@ document.getElementById("searchBox").addEventListener("input", () => renderChann
 // KEYBOARD HANDLERS
 // ═══════════════════════════════════════
 document.addEventListener("keydown", e => {
-  if (!player) return;
-  if (e.key === "f" || e.key === "F") player.requestFullscreen && player.requestFullscreen();
+  if (e.key === "f" || e.key === "F") mainVid.requestFullscreen && mainVid.requestFullscreen();
   if (e.key === " ") {
     e.preventDefault();
-    player.paused() ? player.play() : player.pause();
+    mainVid.paused ? mainVid.play() : mainVid.pause();
   }
 });
 
@@ -850,26 +846,22 @@ function showPipOverlay() {
   const sub = document.getElementById("pipOverlayChannel");
   if (currentChannel) sub.textContent = currentChannel.name;
   overlay.classList.add("active");
-  // Pause main player
-  if (player) player.pause();
+  mainVid.pause();
 }
 
 function hidePipOverlay() {
   document.getElementById("pipOverlay").classList.remove("active");
-  // Resume main player
-  if (player && currentChannel) player.play().catch(()=>{});
+  if (currentChannel) mainVid.play().catch(()=>{});
 }
 
 function openFloatPlayer() {
   if (!currentChannel) { showToast("⚠️ Prothome ekta channel play koro"); return; }
 
-  const mainVid = document.querySelector("#mainVideo video");
+  // ── Try native PiP on mainVid directly (best for app switch) ──
+  mainVid.disablePictureInPicture = false;
+  mainVid.removeAttribute("disablePictureInPicture");
 
-  // ── Try native PiP first (works when app switch needed) ──
-  if (mainVid && typeof mainVid.requestPictureInPicture === "function") {
-    mainVid.removeAttribute("disablePictureInPicture");
-    mainVid.disablePictureInPicture = false;
-
+  if (typeof mainVid.requestPictureInPicture === "function" && document.pictureInPictureEnabled) {
     mainVid.requestPictureInPicture().then(() => {
       pipMode = 'native';
       showPipOverlay();
@@ -883,14 +875,13 @@ function openFloatPlayer() {
           document.getElementById("pipBtn").querySelector("i").className = "fa fa-clone";
         }
       });
-    }).catch(() => {
-      // Native PiP failed — fallback to custom float
+    }).catch(err => {
+      console.log("Native PiP failed:", err);
       openCustomFloat();
     });
     return;
   }
 
-  // ── Fallback: custom in-browser float ──
   openCustomFloat();
 }
 
@@ -929,7 +920,7 @@ function openCustomFloat() {
 }
 
 function closeFloatPlayer() {
-  // Close native PiP if active
+  // Exit native PiP if active
   if (pipMode === 'native' && document.pictureInPictureElement) {
     document.exitPictureInPicture().catch(()=>{});
   }
