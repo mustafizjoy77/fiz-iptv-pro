@@ -274,6 +274,16 @@ header {
 #lockBadge { display:none; }
 #lockBadge.show { display:flex !important; }
 
+/* WC 2026 Channel Badge */
+.wc-badge {
+  position:absolute; top:6px; right:6px;
+  background:linear-gradient(135deg,#f59e0b,#ef4444);
+  color:#fff; font-size:8px; font-weight:800;
+  padding:2px 5px; border-radius:6px; letter-spacing:0.3px;
+  line-height:1.4; z-index:1;
+}
+.channel.wc2026 { border-color:rgba(245,158,11,0.5); }
+.channel.wc2026:hover { border-color:#f59e0b; box-shadow:0 8px 25px rgba(245,158,11,0.25); }
 </style>
 </head>
 
@@ -324,7 +334,7 @@ header {
 <div class="channel-grid" id="channelGrid">
   <div class="loading-wrap" id="loadingWrap">
     <div class="spinner"></div>
-    <div class="loading-text">Loading channels...</div>
+    <div class="loading-text">Loading channels... please wait</div>
     <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
   </div>
 </div>
@@ -367,10 +377,11 @@ header {
 // ═══════════════════════════════════════
 // PLAYLISTS BY CATEGORY
 // ═══════════════════════════════════════
+// tv channels.m3u → bangla + global (group-title দিয়ে auto-detect)
+// worldcup2026 and others sports cahnnel.m3u → sports (WC 2026 + Others)
 const PLAYLISTS = {
-  bangla: "https://raw.githubusercontent.com/mustafizjoy77/iptv-list/refs/heads/main/bangla%20tv%20list.m3u",
-  sports: "https://raw.githubusercontent.com/mustafizjoy77/iptv-list/refs/heads/main/sports%20tv%20list.m3u",
-  global: "https://raw.githubusercontent.com/mustafizjoy77/iptv-list/refs/heads/main/world%20tv%20list.m3u"
+  tv:     "https://raw.githubusercontent.com/mustafizjoy77/iptv-list/refs/heads/main/tv%20channels.m3u",
+  sports: "https://raw.githubusercontent.com/mustafizjoy77/iptv-list/refs/heads/main/worldcup2026%20and%20others%20sports%20cahnnel.m3u"
 };
 
 // ═══════════════════════════════════════
@@ -432,7 +443,28 @@ function addRecent(ch) {
 // ═══════════════════════════════════════
 // M3U PLAYLIST PARSER
 // ═══════════════════════════════════════
-async function parseM3U(url, category) {
+// Bangla keywords for auto-detection
+const BANGLA_KEYWORDS = ['bangla','bengali','bangladesh','btv','ntv','atv','rtv','channel i','channeli','ekattor','somoy','boishakhi','jamuna','desh','mytv','gazi','nagorik','dbc','71','news24','independent','maasranga','star jalsha','star pravah','zee bangla','colors bangla','deepto','shomoy'];
+
+function detectTvCategory(name, group) {
+  const n = (name || '').toLowerCase();
+  const g = (group || '').toLowerCase();
+  const combined = n + ' ' + g;
+
+  // Check for Bangla keywords
+  for (const kw of BANGLA_KEYWORDS) {
+    if (combined.includes(kw)) return 'bangla';
+  }
+  return 'global';
+}
+
+// Detect if a sports channel is WC 2026
+function isWC2026(name, group) {
+  const combined = ((name || '') + ' ' + (group || '')).toLowerCase();
+  return combined.includes('wc 2026') || combined.includes('world cup') || combined.includes('worldcup') || combined.includes('copa del mundo') || combined.includes('fifa');
+}
+
+async function parseM3U(url, sourceKey) {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -447,15 +479,26 @@ async function parseM3U(url, category) {
         const logoMatch = line.match(/tvg-logo="([^"]+)"/);
         const groupMatch = line.match(/group-title="([^"]+)"/);
         const namePart = line.split(",").slice(1).join(",").trim();
+        const groupTitle = groupMatch ? groupMatch[1] : "General";
+
+        let category;
+        if (sourceKey === 'sports') {
+          category = 'sports';
+        } else {
+          // tv channels.m3u → auto-detect bangla vs global
+          category = detectTvCategory(namePart, groupTitle);
+        }
+
         cur = {
           name: namePart || "Unknown",
           logo: logoMatch ? logoMatch[1] : "",
-          group: groupMatch ? groupMatch[1] : "General",
-          category: category
+          group: groupTitle,
+          category: category,
+          // For sports: flag WC 2026 channels
+          wc2026: sourceKey === 'sports' ? isWC2026(namePart, groupTitle) : false
         };
       } else if (line && !line.startsWith("#") && cur) {
         cur.url = line;
-        // Created highly distinct identification layout signature combining metadata
         let combineKey = cur.name + "_" + cur.category + "_" + cur.url;
         cur.id = btoa(encodeURIComponent(combineKey)).slice(0, 24).replace(/=/g, 'z');
         parsed.push({ ...cur });
@@ -464,7 +507,7 @@ async function parseM3U(url, category) {
     }
     return parsed;
   } catch(e) {
-    console.error("Playlist load error:", category, e);
+    console.error("Playlist load error:", sourceKey, e);
     return [];
   }
 }
@@ -474,14 +517,14 @@ async function parseM3U(url, category) {
 // ═══════════════════════════════════════
 async function loadPlaylists() {
   allChannels = [];
-  const cats = Object.keys(PLAYLISTS);
+  const sources = Object.keys(PLAYLISTS);
 
-  for (let i = 0; i < cats.length; i++) {
-    const cat = cats[i];
-    const pct = Math.round(((i) / cats.length) * 100);
+  for (let i = 0; i < sources.length; i++) {
+    const key = sources[i];
+    const pct = Math.round(((i) / sources.length) * 100);
     document.getElementById("progressBar").style.width = pct + "%";
 
-    const chs = await parseM3U(PLAYLISTS[cat], cat);
+    const chs = await parseM3U(PLAYLISTS[key], key);
     allChannels = allChannels.concat(chs);
   }
 
@@ -497,32 +540,39 @@ async function loadPlaylists() {
 function updateNavCounts() {
   const bangla = allChannels.filter(c => c.category === 'bangla').length;
   const sports = allChannels.filter(c => c.category === 'sports').length;
-  const global = allChannels.filter(c => c.category === 'global').length;
+  const global_ = allChannels.filter(c => c.category === 'global').length;
   
   document.getElementById("nav-bangla").textContent = `Bangla (${bangla})`;
   document.getElementById("nav-sports").textContent = `Sports (${sports})`;
-  document.getElementById("nav-global").textContent = `Global (${global})`;
+  document.getElementById("nav-global").textContent = `Global (${global_})`;
   document.getElementById("nav-favs").textContent = `Favs (${getFavorites().length})`;
   document.getElementById("nav-recent").textContent = `Recent (${getRecent().length})`;
 }
 
 // ═══════════════════════════════════════
-// UI UPDATE: FIXED GLOBAL CATEGORIES
+// UI UPDATE: SUB-CATEGORIES BY TAB
 // ═══════════════════════════════════════
 function renderSubCategories() {
   const wrap = document.getElementById("subCategoryWrap");
-  if (currentTab !== 'global') {
+
+  if (currentTab === 'sports') {
+    wrap.style.display = 'flex';
+    const groups = ["All", "🏆 WC 2026", "⚽ Others"];
+    wrap.innerHTML = groups.map(g =>
+      `<div class="sub-cat-pill ${currentSubCategory === g ? 'active' : ''}" onclick="setSubCategory('${g}')">${g}</div>`
+    ).join("");
+
+  } else if (currentTab === 'global') {
+    wrap.style.display = 'flex';
+    const groups = ["All", "Bangla", "Sports", "Movies", "Hindi", "Music", "Kids"];
+    wrap.innerHTML = groups.map(g =>
+      `<div class="sub-cat-pill ${currentSubCategory === g ? 'active' : ''}" onclick="setSubCategory('${g}')">${g}</div>`
+    ).join("");
+
+  } else {
     wrap.style.display = 'none';
     currentSubCategory = "All";
-    return;
   }
-  
-  wrap.style.display = 'flex';
-  const groups = ["All", "Bangla", "Sports", "Movies", "Hindi", "Music", "Kids"];
-  
-  wrap.innerHTML = groups.map(g => {
-    return `<div class="sub-cat-pill ${currentSubCategory === g ? 'active' : ''}" onclick="setSubCategory('${g}')">${g}</div>`;
-  }).join("");
 }
 
 // ═══════════════════════════════════════
@@ -558,6 +608,16 @@ function renderChannels(append = false) {
     } else {
       currentFilteredData = allChannels.filter(c => c.category === currentTab);
       
+      // Sports sub-category filter
+      if (currentTab === "sports" && currentSubCategory !== "All") {
+        if (currentSubCategory === "🏆 WC 2026") {
+          currentFilteredData = currentFilteredData.filter(c => c.wc2026 === true);
+        } else if (currentSubCategory === "⚽ Others") {
+          currentFilteredData = currentFilteredData.filter(c => !c.wc2026);
+        }
+      }
+
+      // Global sub-category filter
       if (currentTab === "global" && currentSubCategory !== "All") {
         currentFilteredData = currentFilteredData.filter(c => {
           const grp = (c.group || '').toLowerCase();
@@ -588,8 +648,10 @@ function renderChannels(append = false) {
   const html = chunk.map(ch => {
     const isFav = favs.includes(ch.id);
     const isPlaying = currentChannel && currentChannel.id === ch.id;
+    const wcBadge = ch.wc2026 ? '<div class="wc-badge">⚽ WC</div>' : '';
 
-    return `<div class="channel${isPlaying ? ' playing' : ''}" id="card-${ch.id}" onclick="playChannel(${JSON.stringify(ch).replace(/"/g,'&quot;')})">
+    return `<div class="channel${isPlaying ? ' playing' : ''}${ch.wc2026 ? ' wc2026' : ''}" id="card-${ch.id}" onclick="playChannel(${JSON.stringify(ch).replace(/"/g,'&quot;')})">
+      ${wcBadge}
       <div class="ch-logo-wrap">
         <img src="${ch.logo || 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png'}"
           loading="lazy"
