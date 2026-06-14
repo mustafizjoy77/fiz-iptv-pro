@@ -1,4 +1,4 @@
-const CACHE = "fiz-iptv-v1";
+const CACHE = "fiz-iptv-v2";
 const ASSETS = [
   "./index.html",
   "./manifest.json"
@@ -19,8 +19,23 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  // Only cache same-origin requests; pass through external (CDN, streams)
+  // Only handle same-origin requests; pass through external (CDN, streams, M3U on GitHub)
   if (!e.request.url.startsWith(self.location.origin)) return;
+
+  // Network-first for HTML/manifest so updates show on next launch
+  if (e.request.mode === "navigate" || e.request.url.endsWith(".html") || e.request.url.endsWith("manifest.json")) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first for other same-origin assets
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );

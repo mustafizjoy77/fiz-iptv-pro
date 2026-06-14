@@ -466,7 +466,8 @@ function isWC2026(name, group) {
 
 async function parseM3U(url, sourceKey) {
   try {
-    const res = await fetch(url);
+    const bustUrl = url + (url.includes("?") ? "&" : "?") + "_=" + Date.now();
+    const res = await fetch(bustUrl, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const text = await res.text();
     const lines = text.split("\n");
@@ -873,6 +874,14 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js")
       .then(reg => console.log("SW registered:", reg.scope))
       .catch(err => console.log("SW failed:", err));
+  });
+
+  // Reload once when the new SW activates and takes control (gets fresh HTML)
+  let swRefreshed = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swRefreshed) return;
+    swRefreshed = true;
+    window.location.reload();
   });
 }
 
